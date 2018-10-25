@@ -32,8 +32,12 @@ def rotate(degree):
 			img_path = class_path + img_name
 			rotate_name = img_name[:-4] + '_rotate' + str(degree) + '.PNG'
 			#print(rotate_name)
-			img = Image.open(img_path)  
-			img = img.rotate(degree)
+			img = Image.open(img_path)
+			im2 = img.convert('RGBA')
+			im2 = im2.rotate(degree, expand=1)
+			fff = Image.new('RGBA', (64,64), color='white')
+			img = Image.composite(im2,fff,im2)
+			img = img.convert('L')
 			img.save(output_path + '/' + name + '/' + rotate_name)
 
 def scaling(scale):
