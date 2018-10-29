@@ -20,7 +20,7 @@ def read_and_decode(filename):
     img = tf.reshape(img, [4096])
     img = tf.cast(img, tf.float32) * (1. / 255) - 0.5
     label = tf.cast(features['label'], tf.int32)
-    
+
     return img, label
 
 def weight_variable(shape):
@@ -56,7 +56,7 @@ def dense_layer(layer,weight,bias):
 def main():
     image, label = read_and_decode("tower.tfrecords")
     img_train_batch, labels_train_batch = tf.train.shuffle_batch([image, label],batch_size=50,capacity=15000,min_after_dequeue=6000,num_threads=2)
-    #train_labels = tf.one_hot(labels_train_batch, 3, 1, 0)
+    labels_train_batch = tf.one_hot(labels_train_batch,depth=3) #resize the label into an array
     sess=tf.InteractiveSession()
     coord = tf.train.Coordinator()
     threads = tf.train.start_queue_runners(sess=sess, coord=coord)
@@ -77,14 +77,15 @@ def main():
     b_conv3=bias_variable([120])
     print("3rd layer")
     layer=conv2d(layer,W_conv3)+b_conv3
-    layer=tf.reshape(layer,[-1,120])
+    layer=tf.reshape(layer,[-1,14*14*120])
 
     # all connected layer
-    con_layer=dense_layer(layer,[120,84],[84])
+    con_layer=dense_layer(layer,[14*14*120,84],[84])
     print("connected layer")
     # output
     con_layer=dense_layer(con_layer,[84,3],[3])
     y_conv=tf.nn.softmax(tf.nn.dropout(con_layer,keep_prob))
+    print(y_conv.shape)
     print("output layer")
     # train and evalute
     cross_entropy=tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits_v2(labels=y_,logits=y_conv))
