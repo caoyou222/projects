@@ -17,9 +17,10 @@ def read_and_decode(filename):
                                        })
  
     img = tf.decode_raw(features['img_raw'], tf.uint8)
-    img = tf.reshape(img, [64, 64, 1])
-    #img = tf.cast(img, tf.float32) * (1. / 255) - 0.5
+    img = tf.reshape(img, [4096])
+    img = tf.cast(img, tf.float32) * (1. / 255) - 0.5
     label = tf.cast(features['label'], tf.int32)
+    
     return img, label
 
 def weight_variable(shape):
@@ -55,17 +56,17 @@ def dense_layer(layer,weight,bias):
 def main():
     image, label = read_and_decode("tower.tfrecords")
     img_train_batch, labels_train_batch = tf.train.shuffle_batch([image, label],batch_size=50,capacity=15000,min_after_dequeue=6000,num_threads=2)
-    train_labels = tf.one_hot(labels_train_batch, 3, 1, 0)
+    #train_labels = tf.one_hot(labels_train_batch, 3, 1, 0)
     sess=tf.InteractiveSession()
     coord = tf.train.Coordinator()
     threads = tf.train.start_queue_runners(sess=sess, coord=coord)
     print("begin session")
     # input layer
-    x=tf.placeholder("float",shape=[None,3600])
+    x=tf.placeholder("float",shape=[None,4096])
     y_=tf.placeholder("float",shape=[None,3])
 
     # first layer
-    x_image=tf.pad(tf.reshape(x,[-1,60,60,1]),[[0,0],[2,2],[2,2],[0,0]])
+    x_image=tf.reshape(x,[-1,64,64,1])
     layer=lenet5_layer(x_image,[5,5,1,6],[6])
     print("1st layer")
     # second layer
@@ -97,13 +98,15 @@ def main():
     print("loop")
     try:
         for i in range(20000):
-            img_xs, lable_xs = sess.run([img_train_batch, labels_train_batch])
+            img_xs, label_xs = sess.run([img_train_batch, labels_train_batch])
+            print(label_xs.shape)
+            print(img_xs.shape)
             if i%100==0:
                 train_accuracy=accuracy.eval(feed_dict={
-                    x:img_xs,y_:lable_xs,keep_prob:1.0
+                    x:img_xs,y_:label_xs,keep_prob:1.0
                 })
                 print("step %d,training accuracy %g"%(i,train_accuracy))
-            train_step.run(feed_dict={x:img_xs,y_:lable_xs,keep_prob:0.5})
+            train_step.run(feed_dict={x:img_xs,y_:label_xs,keep_prob:0.5})
     except Exception, e:
         coord.request_stop(e)
     coord.request_stop()
