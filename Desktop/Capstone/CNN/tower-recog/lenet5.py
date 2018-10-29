@@ -77,10 +77,11 @@ def main():
     b_conv3=bias_variable([120])
     print("3rd layer")
     layer=conv2d(layer,W_conv3)+b_conv3
-    layer=tf.reshape(layer,[-1,14*14*120])
+    layer = tf.reshape(layer,[-1,9*9*120])
+
 
     # all connected layer
-    con_layer=dense_layer(layer,[14*14*120,84],[84])
+    con_layer=dense_layer(layer,[9*9*120,84],[84])
     print("connected layer")
     # output
     con_layer=dense_layer(con_layer,[84,3],[3])
@@ -100,8 +101,6 @@ def main():
     try:
         for i in range(20000):
             img_xs, label_xs = sess.run([img_train_batch, labels_train_batch])
-            print(label_xs.shape)
-            print(img_xs.shape)
             if i%100==0:
                 train_accuracy=accuracy.eval(feed_dict={
                     x:img_xs,y_:label_xs,keep_prob:1.0
