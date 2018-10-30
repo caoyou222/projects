@@ -75,10 +75,10 @@ def create_record():
 	writer.close()
 
 if __name__ == '__main__':  
-    #uniform_img()
-    #scaling(1.5)
-    #rotate(30)
-    #rotate(90)
-    #rotate(15)
+    uniform_img()
+    scaling(1.2)
+    rotate(30)
+    rotate(90)
+    rotate(15)
     create_record()
     

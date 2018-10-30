@@ -1,9 +1,12 @@
 import tensorflow as tf
 import numpy as np
 import os
+import matplotlib.pyplot as plt 
+import time
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
 
 keep_prob=tf.placeholder("float")
+learning_rate = 0.001
 
 def read_and_decode(filename):
     filename_queue = tf.train.string_input_producer([filename])
@@ -32,8 +35,10 @@ def bias_variable(shape):
     return tf.Variable(initial)
 
 # convolution and pooling
-def conv2d(x,W):
-    return tf.nn.conv2d(x,W,strides=[1,1,1,1],padding='VALID')
+def conv2d(x,W,b):
+    h_conv = tf.nn.conv2d(x,W,strides=[1,1,1,1],padding='VALID')
+    conv = tf.nn.tanh(tf.nn.bias_add(h_conv,b))
+    return tf.layers.batch_normalization(conv, training=True)
 
 def max_pool_2x2(x):
     return tf.nn.max_pool(x,ksize=[1,2,2,1],strides=[1,2,2,1],padding='VALID')
@@ -42,25 +47,25 @@ def max_pool_2x2(x):
 def lenet5_layer(layer,weight,bias):
     W_conv=weight_variable(weight)
     b_conv=bias_variable(bias)
-
-    h_conv=conv2d(layer,W_conv)+b_conv
+    h_conv=conv2d(layer,W_conv,b_conv)
     return max_pool_2x2(h_conv)
 
 # connected layer
 def dense_layer(layer,weight,bias):
-    W_fc=weight_variable(weight)
     b_fc=bias_variable(bias)
-
-    return tf.matmul(layer,W_fc)+b_fc
+    return tf.nn.tanh(tf.matmul(layer,weight)+b_fc)
 
 def main():
+    time_start = time.time()
     image, label = read_and_decode("tower.tfrecords")
-    img_train_batch, labels_train_batch = tf.train.shuffle_batch([image, label],batch_size=50,capacity=15000,min_after_dequeue=6000,num_threads=2)
+    img_train_batch, labels_train_batch = tf.train.shuffle_batch([image, label],batch_size=20,capacity=15000,min_after_dequeue=6000,num_threads=2)
     labels_train_batch = tf.one_hot(labels_train_batch,depth=3) #resize the label into an array
+    label = tf.one_hot(label, depth=3)
     sess=tf.InteractiveSession()
     coord = tf.train.Coordinator()
     threads = tf.train.start_queue_runners(sess=sess, coord=coord)
-    print("begin session")
+    regularizer = tf.contrib.layers.l2_regularizer(0.001)
+
     # input layer
     x=tf.placeholder("float",shape=[None,4096])
     y_=tf.placeholder("float",shape=[None,3])
@@ -68,44 +73,53 @@ def main():
     # first layer
     x_image=tf.reshape(x,[-1,64,64,1])
     layer=lenet5_layer(x_image,[5,5,1,6],[6])
-    print("1st layer")
+
     # second layer
     layer=lenet5_layer(layer,[5,5,6,16],[16])
-    print("2nd layer")
+
     # third layer
     W_conv3=weight_variable([5,5,16,120])
     b_conv3=bias_variable([120])
-    print("3rd layer")
-    layer=conv2d(layer,W_conv3)+b_conv3
+    if regularizer != None:
+            tf.add_to_collection('losses',regularizer(W_conv3))
+    layer=conv2d(layer,W_conv3,b_conv3)
     layer = tf.reshape(layer,[-1,9*9*120])
 
-
     # all connected layer
-    con_layer=dense_layer(layer,[9*9*120,84],[84])
-    print("connected layer")
+    w_fc1 = weight_variable([9*9*120,84])
+    if regularizer != None:
+            tf.add_to_collection('losses',regularizer(w_fc1))
+    con_layer=dense_layer(layer,w_fc1,[84])
+
     # output
-    con_layer=dense_layer(con_layer,[84,3],[3])
-    y_conv=tf.nn.softmax(tf.nn.dropout(con_layer,keep_prob))
-    print(y_conv.shape)
-    print("output layer")
+    w_fc2 = weight_variable([84,3])
+    if regularizer != None:
+            tf.add_to_collection('losses',regularizer(w_fc2))
+    con_layer=dense_layer(con_layer,w_fc2,[3])
+    y_conv=tf.nn.softmax(tf.nn.dropout(con_layer,0.5))
+
     # train and evalute
     cross_entropy=tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits_v2(labels=y_,logits=y_conv))
-    train_step=tf.train.AdamOptimizer(1e-4).minimize(cross_entropy)
+    train_step=tf.train.AdamOptimizer(learning_rate).minimize(cross_entropy)
     correct_prediction=tf.equal(tf.argmax(y_conv,1),tf.argmax(y_,1))
     accuracy=tf.reduce_mean(tf.cast(correct_prediction,"float"))
-    print("train")
+
     saver = tf.train.Saver()
 
     sess.run(tf.global_variables_initializer())
-    print("loop")
+
     try:
-        for i in range(20000):
+        accr = []
+        costs = []
+        for i in range(10000):
             img_xs, label_xs = sess.run([img_train_batch, labels_train_batch])
             if i%100==0:
-                train_accuracy=accuracy.eval(feed_dict={
-                    x:img_xs,y_:label_xs,keep_prob:1.0
-                })
+                train_accuracy=accuracy.eval(feed_dict={x:img_xs,y_:label_xs,keep_prob:1.0})
+                batch_cost = cross_entropy.eval(feed_dict={x:img_xs,y_:label_xs,keep_prob:1.0})
+                accr.append(train_accuracy)
+                costs.append(batch_cost)
                 print("step %d,training accuracy %g"%(i,train_accuracy))
+                print("step %d,cost %g"%(i,batch_cost))
             train_step.run(feed_dict={x:img_xs,y_:label_xs,keep_prob:0.5})
     except Exception, e:
         coord.request_stop(e)
@@ -114,9 +128,20 @@ def main():
     saver.save(sess,"./model.ckpt")
     sess.close()
 
-    #print("Test accuracy %g"%accuracy.eval(feed_dict={
-        #x:mnist.test.images,y_:mnist.test.labels,keep_prob:1.0
-    #}))
+    time_stop = time.time()
+    print("Training Time: " + str(time_stop-time_start) + "s")
+
+    plt.plot(accr)
+    plt.ylabel('accuracy')
+    plt.xlabel('iterations (per 100)')
+    plt.title("Learning rate =" + str(learning_rate))
+    plt.show()
+
+    plt.plot(costs)
+    plt.ylabel('costs')
+    plt.xlabel('iterations (per 100)')
+    plt.title("Learning rate =" + str(learning_rate))
+    plt.show()
 
 if __name__=='__main__':
     main()
