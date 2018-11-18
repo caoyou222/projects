@@ -4,6 +4,8 @@ import os
 import matplotlib.pyplot as plt 
 import time
 from PIL import Image 
+from tensorflow.python.client import device_lib
+print(device_lib.list_local_devices())
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
 
 keep_prob=tf.placeholder("float")
@@ -26,13 +28,13 @@ def read_and_decode(filename, b_size):
     img = tf.reshape(img, [1024])
     label = tf.cast(features['label'], tf.int32)
 
-    img_train_batch, labels_train_batch = tf.train.shuffle_batch([img, label],batch_size=b_size,capacity=10000,min_after_dequeue=9000,num_threads=2)
+    img_train_batch, labels_train_batch = tf.train.shuffle_batch([img, label],batch_size=b_size,capacity=6000,min_after_dequeue=5000,num_threads=2)
     labels_batch = tf.one_hot(labels_train_batch,depth=class_num)
 
     return img_train_batch, labels_batch
 
 def weight_variable(shape):
-    initial=tf.truncated_normal(shape,stddev=0.1)
+    initial=tf.truncated_normal(shape,stddev=0.01)
     return tf.Variable(initial)
 
 def bias_variable(shape):
@@ -64,7 +66,7 @@ def dense_layer(layer,weight,bias):
 
 def main():
     time_start = time.time()
-    img_train_batch, labels_train_batch = read_and_decode('tower_train.tfrecords', batch_size)
+    img_train_batch, labels_train_batch = read_and_decode('tower-train-32.tfrecords', batch_size)
 
     x=tf.placeholder("float",shape=[None,1024])
     y_=tf.placeholder("float",shape=[None,class_num])
@@ -72,7 +74,7 @@ def main():
     # first layer
     x_image=tf.reshape(x,[-1,32,32,1])
     layer=lenet5_layer(x_image,[5,5,1,6],[6])
-
+    w1 = weight_variable([5,5,1,6])
     # second layer
     layer=lenet5_layer(layer,[5,5,6,16],[16])
 
@@ -99,13 +101,14 @@ def main():
     saver = tf.train.Saver()
     accr = []
     costs = []
+
     with tf.Session() as sess:
         
         init_op = tf.global_variables_initializer()
         sess.run(init_op)
         coord = tf.train.Coordinator()
         threads = tf.train.start_queue_runners(coord=coord)
-        for i in range(2000):
+        for i in range(10000):
             img_xs, label_xs = sess.run([img_train_batch,labels_train_batch])
             if i%100==0:
                 train_accuracy=accuracy.eval(feed_dict={x:img_xs,y_:label_xs,keep_prob:1.0})
@@ -113,12 +116,13 @@ def main():
                 batch_cost = cross_entropy.eval(feed_dict={x:img_xs,y_:label_xs,keep_prob:1.0})
                 costs.append(batch_cost)
                 print("step %d, training accuracy %g"%(i,train_accuracy) + ", cost %g"%(batch_cost))
+
             train_step.run(feed_dict={x:img_xs,y_:label_xs,keep_prob:0.5})
         
         coord.request_stop()
         coord.join(threads)
 
-        saver.save(sess,"./tower_model.ckpt")
+        #saver.save(sess,"./stable_32/tower_model_stable.ckpt")
 
     # Test
     # img_test_batch, labels_test_batch = read_and_decode('tower_test.tfrecords',500)
